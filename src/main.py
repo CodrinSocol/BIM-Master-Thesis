@@ -1,7 +1,7 @@
 import pandas as pd
 import tqdm as tq
 
-from src.types import LOBSnapshot, PriceLevel
+from src.lob_types import LOBSnapshot, PriceLevel
 
 
 def read_data(path_to_file: str) -> list[LOBSnapshot]:
