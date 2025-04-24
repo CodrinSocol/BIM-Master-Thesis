@@ -15,7 +15,7 @@ def clean_deribit_data_for_day(day: str) -> ndarray:
     ]
 
 
-    data = tardis.convert(files, output_filename=str(data_output_path), snapshot_mode="process", buffer_size=300_000_000)
+    data = tardis.convert(files, output_filename=str(data_output_path))
     return data
 
 
