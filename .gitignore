@@ -1,6 +1,7 @@
 .idea
 venv
 
-
 # Data directory is too large, trying to push to Github will fail
 data
+# Jupyter Notebook checkpoints
+src/.ipynb_checkpoints
