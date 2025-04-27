@@ -61,8 +61,10 @@ python3 preprocessing.py
 Running this command will generate the following files:
 - `/data/daily_processed/deribit_eth_perp_<date>.npz`
 - `/data/snapshots/deribit_eth_perp_<date>_eod.npz`
+- _for each day in January 2025, one file will be generated_
+- _the date format should be `YYYY-MM-DD` (e.g. `2025-01-14`)_
 
 These files can then directly be used to create a `HFTBacktest` agent instance.
 
 ## Alternative Data sources
-The `HFTBacktest` library supports other data source, such as from Binance. This is out of scope for this research. However, if you want to test this agent with other data inputs, please follow the [Data Preparation tutorials](https://hftbacktest.readthedocs.io/en/latest/tutorials/Data%20Preparation.html) from the `HFTBacktest` library.
+The `HFTBacktest` library supports other data source, such as by connecting to the [Binance Data API](https://www.binance.com/en/binance-api). This is out of scope for this research. However, if you want to test this agent with other data inputs, please follow the [Data Preparation tutorials](https://hftbacktest.readthedocs.io/en/latest/tutorials/Data%20Preparation.html) from the `HFTBacktest` library.
