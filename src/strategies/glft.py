@@ -3,6 +3,7 @@ from numba import njit
 from hftbacktest import BUY_EVENT, SELL, BUY, GTX, LIMIT
 from numba.typed import Dict
 from numba import uint64
+from scipy.ndimage import maximum_position
 
 out_dtype = np.dtype([
     ('half_spread_tick', 'f8'),
@@ -54,17 +55,18 @@ def measure_trading_intensity(order_arrival_depth, out):
         max_tick = max(max_tick, tick)
     return out[:max_tick]
 
-
-
+# [I 2025-05-16 00:13:01,503] Trial 45 finished with value: 3523.952191000073 and parameters: {'gamma': 0.014337292522388159, 'delta': 0.5814291001124425, 'adj1': 1.2624726183925832, 'adj2': 0.3814952987659385, 'max_position': 35}. Best is trial 45 with value: 3523.952191000073.
 @njit
-def gridtrading_glft_mm(hbt, recorder):
-    asset_no = 0
+def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position):
+
+    asset_no = 0 # for multiple assets, always 0 if only one asset is used
+    # Tick size of this asset: minimum price increase
     tick_size = hbt.depth(asset_no).tick_size
 
-    arrival_depth = np.full(10_000_000, np.nan, np.float64)
-    mid_price_chg = np.full(10_000_000, np.nan, np.float64)
+    arrival_depth = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
+    mid_price_chg = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
 
-    t = 0
+    t = 0 # current step (each step is 100ms)
     prev_mid_price_tick = np.nan
     mid_price_tick = np.nan
 
@@ -74,17 +76,22 @@ def gridtrading_glft_mm(hbt, recorder):
     A = np.nan
     k = np.nan
     volatility = np.nan
-    gamma = 0.05
-    delta = 1
-    adj1 = 1
-    adj2 = 0.05
-
+    # gamma = 0.05
+    # delta = 1
+    # adj1 = 1
+    # adj2 = 0.05
     order_qty = 1
-    max_position = 20
+    # max_position = 20
     grid_num = 20
+
+
 
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
+        # if(t % 36_000 == 0):
+        #     print("Hour:", (t % 864_000) // 36_000)
+        # if t % 864_000 == 0:
+        #     print("Trading day: ", t // 864_000)
         #--------------------------------------------------------
         # Records market order's arrival depth from the mid-price.
         if not np.isnan(mid_price_tick):
@@ -98,7 +105,9 @@ def gridtrading_glft_mm(hbt, recorder):
                     depth = np.nanmax([mid_price_tick - trade_price_tick, depth])
             arrival_depth[t] = depth
 
+        # The last_trades array capacity is capped. Clearing last_trades is required to avoid overflow errors.
         hbt.clear_last_trades(asset_no)
+        # Not clearing inactive orders leads to huge execution delays. (and also very poor profit performance)
         hbt.clear_inactive_orders(asset_no)
 
         depth = hbt.depth(asset_no)
@@ -181,7 +190,7 @@ def gridtrading_glft_mm(hbt, recorder):
 
                 ask_price += grid_interval
 
-        order_values = orders.values();
+        order_values = orders.values()
         while order_values.has_next():
             order = order_values.get()
             # Cancels if a working order is not in the new grid.
@@ -208,7 +217,7 @@ def gridtrading_glft_mm(hbt, recorder):
         t += 1
 
         if t >= len(arrival_depth) or t >= len(mid_price_chg):
-            raise Exception
+            raise Exception("current tick is out of bounds of allocated arrival_depth or mid_price_chg array size")
 
         # Records the current state for stat calculation.
         recorder.record(hbt)

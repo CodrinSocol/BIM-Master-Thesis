@@ -1,4 +1,12 @@
+import polars
+
+import polars as pl
+import numpy as np
+
 from pathlib import Path
+
+from hftbacktest import EXCH_EVENT, LOCAL_EVENT
+from numba import njit
 from numpy import ndarray
 
 from hftbacktest.data.utils.snapshot import create_last_snapshot
@@ -69,6 +77,48 @@ def create_end_of_day_snapshot(date: str, data) -> ndarray:
     )
     return snapshot
 
+@njit
+def generate_order_latency_nb(data, order_latency, mul_entry, offset_entry, mul_resp, offset_resp):
+    for i in range(len(data)):
+        exch_ts = data[i].exch_ts
+        local_ts = data[i].local_ts
+        feed_latency = local_ts - exch_ts
+        order_entry_latency = mul_entry * feed_latency + offset_entry
+        order_resp_latency = mul_resp * feed_latency + offset_resp
+
+        req_ts = local_ts
+        order_exch_ts = req_ts + order_entry_latency
+        resp_ts = order_exch_ts + order_resp_latency
+
+        order_latency[i].req_ts = req_ts
+        order_latency[i].exch_ts = order_exch_ts
+        order_latency[i].resp_ts = resp_ts
+
+def generate_order_latency(data: ndarray, output_file:str, mul_entry:int, mul_resp:int) -> None:
+    df = pl.DataFrame(data)
+    offset_entry = 0
+    offset_resp = 0
+
+    df = df.filter(
+        (pl.col('ev') & EXCH_EVENT == EXCH_EVENT) & (pl.col('ev') & LOCAL_EVENT == LOCAL_EVENT)
+    ).with_columns(
+        pl.col('local_ts').alias('ts')
+    ).group_by_dynamic(
+        'ts', every='1000000000i'
+    ).agg(
+        pl.col('exch_ts').last(),
+        pl.col('local_ts').last()
+    ).drop('ts')
+
+    data = df.to_numpy(structured=True)
+
+    order_latency = np.zeros(len(data),
+                             dtype=[('req_ts', 'i8'), ('exch_ts', 'i8'), ('resp_ts', 'i8'), ('_padding', 'i8')])
+    generate_order_latency_nb(data, order_latency, mul_entry, offset_entry, mul_resp, offset_resp)
+
+    if output_file is not None:
+        np.savez_compressed(output_file, data=order_latency)
+
 
 def clean_deribit_january():
     r"""
@@ -88,5 +138,12 @@ def clean_deribit_january():
         data = clean_deribit_data_for_day(day_str)
         create_end_of_day_snapshot(day_str, data)
 
+def generate_latencies_january():
+    for day in range(1, 32):
+        day_str = f"2025-01-{day:02d}"
+        print(f"Processing {day_str}")
+        data = np.load(f"../data/daily_processed/deribit_eth_perp_{day_str}.npz")["data"]
+        generate_order_latency(data, f"../data/latencies/latency_{day_str}.npz", 4, 3)
+
 if __name__ == "__main__":
-    clean_deribit_january()
+    generate_latencies_january()

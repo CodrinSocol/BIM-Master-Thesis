@@ -5,3 +5,5 @@ venv
 data
 # Jupyter Notebook checkpoints
 src/.ipynb_checkpoints
+
+results
