@@ -56,7 +56,7 @@ def measure_trading_intensity(order_arrival_depth, out):
 
 # [I 2025-05-16 00:13:01,503] Trial 45 finished with value: 3523.952191000073 and parameters: {'gamma': 0.014337292522388159, 'delta': 0.5814291001124425, 'adj1': 1.2624726183925832, 'adj2': 0.3814952987659385, 'max_position': 35}. Best is trial 45 with value: 3523.952191000073.
 @njit
-def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position):
+def improved(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position):
 
     asset_no = 0 # for multiple assets, always 0 if only one asset is used
     # Tick size of this asset: minimum price increase
@@ -75,8 +75,8 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
     A = np.nan
     k = np.nan
     volatility = np.nan
-    # gamma = 0.05
-    # delta = 1
+    # gamma = 0.05 # risk aversion. Higher gamma means more risk averse. gamma = 0.1 is considered risk neutral in Stoikov model, while gamma = 0.5 is considered risk averse.
+    # delta = 1 # fixed trade size
     # adj1 = 1
     # adj2 = 0.05
     order_qty = 1
