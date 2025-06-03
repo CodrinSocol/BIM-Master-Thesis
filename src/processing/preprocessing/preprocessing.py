@@ -146,4 +146,4 @@ def generate_latencies_january():
         generate_order_latency(data, f"../data/latencies/latency_{day_str}.npz", 4, 3)
 
 if __name__ == "__main__":
-    generate_latencies_january()
+    clean_deribit_january()

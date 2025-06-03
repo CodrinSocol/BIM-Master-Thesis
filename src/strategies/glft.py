@@ -87,10 +87,12 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
 
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
+        # if t > 72_000:
+        #     return
         # if(t % 36_000 == 0):
         #     print("Hour:", (t % 864_000) // 36_000)
-        # if t % 864_000 == 0:
-        #     print("Trading day: ", t // 864_000)
+        if t % 864_000 == 0:
+            print("Trading day: ", t // 864_000)
         #--------------------------------------------------------
         # Records market order's arrival depth from the mid-price.
         if not np.isnan(mid_price_tick):
