@@ -54,7 +54,6 @@ def measure_trading_intensity(order_arrival_depth, out):
         max_tick = max(max_tick, tick)
     return out[:max_tick]
 
-# [I 2025-05-16 00:13:01,503] Trial 45 finished with value: 3523.952191000073 and parameters: {'gamma': 0.014337292522388159, 'delta': 0.5814291001124425, 'adj1': 1.2624726183925832, 'adj2': 0.3814952987659385, 'max_position': 35}. Best is trial 45 with value: 3523.952191000073.
 @njit
 def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position):
 

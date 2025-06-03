@@ -1,8 +1,11 @@
 import numpy as np
-from numba import njit
+from numba import njit, objmode
 from hftbacktest import BUY_EVENT, SELL, BUY, GTX, LIMIT
 from numba.typed import Dict
 from numba import uint64
+from sklearn.ensemble import RandomForestClassifier
+
+from src.processing.helpers.build_tick_market_depth import build_market_depth
 
 out_dtype = np.dtype([
     ('half_spread_tick', 'f8'),
@@ -54,9 +57,26 @@ def measure_trading_intensity(order_arrival_depth, out):
         max_tick = max(max_tick, tick)
     return out[:max_tick]
 
-# [I 2025-05-16 00:13:01,503] Trial 45 finished with value: 3523.952191000073 and parameters: {'gamma': 0.014337292522388159, 'delta': 0.5814291001124425, 'adj1': 1.2624726183925832, 'adj2': 0.3814952987659385, 'max_position': 35}. Best is trial 45 with value: 3523.952191000073.
+rf = RandomForestClassifier(
+                n_estimators=100,
+                max_depth=10,
+                min_samples_split=2,
+                min_samples_leaf=1,
+                max_features='sqrt',
+                random_state=42,
+                )
+
 @njit
-def improved(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position):
+def predict_mid_price(hbt,stats):
+    x = build_market_depth(hbt, stats, 2, 25)
+    with objmode(mid_price_pred='int64'):
+        # Predicts the mid-price change using the pre-trained random forest model.
+        # The model is trained on the features generated from the market depth.
+        mid_price_pred = rf.predict([x])[0]
+    return mid_price_pred
+
+@njit
+def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position, stats, train_features, labels):
 
     asset_no = 0 # for multiple assets, always 0 if only one asset is used
     # Tick size of this asset: minimum price increase
@@ -75,23 +95,16 @@ def improved(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_positi
     A = np.nan
     k = np.nan
     volatility = np.nan
-    # gamma = 0.05 # risk aversion. Higher gamma means more risk averse. gamma = 0.1 is considered risk neutral in Stoikov model, while gamma = 0.5 is considered risk averse.
-    # delta = 1 # fixed trade size
-    # adj1 = 1
-    # adj2 = 0.05
     order_qty = 1
-    # max_position = 20
     grid_num = 20
 
-
+    with objmode():
+        rf.fit(train_features, labels)
 
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
-        # if(t % 36_000 == 0):
-        #     print("Hour:", (t % 864_000) // 36_000)
-        # if t % 864_000 == 0:
-        #     print("Trading day: ", t // 864_000)
-        #--------------------------------------------------------
+        if(t % 36_000 == 0):
+            print("Hour:", (t % 864_000) // 36_000)
         # Records market order's arrival depth from the mid-price.
         if not np.isnan(mid_price_tick):
             depth = -np.inf
@@ -113,6 +126,10 @@ def improved(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_positi
         position = hbt.position(asset_no)
         orders = hbt.orders(asset_no)
 
+
+        if t > 72_000:
+            return
+
         best_bid_tick = depth.best_bid_tick
         best_ask_tick = depth.best_ask_tick
 
@@ -121,6 +138,7 @@ def improved(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_positi
 
         # Records the mid-price change for volatility calculation.
         mid_price_chg[t] = mid_price_tick - prev_mid_price_tick
+
 
         #--------------------------------------------------------
         # Calibrates A, k and calculates the market volatility.
@@ -151,7 +169,24 @@ def improved(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_positi
         half_spread_tick = (c1 + delta / 2 * c2 * volatility) * adj1
         skew = c2 * volatility * adj2
 
-        reservation_price_tick = mid_price_tick - skew * position
+        # snapshot = np.empty(4 * 25, dtype=np.float32)
+        # idx = 0
+        # for lvl in range(25):
+        #     bid_tick = max(best_bid_tick - lvl, 0)
+        #     ask_tick = best_ask_tick + lvl
+        #
+        #     snapshot[idx] = bid_tick
+        #     snapshot[idx + 1] = depth.bid_qty_at_tick(bid_tick)
+        #     snapshot[idx + 2] = ask_tick
+        #     snapshot[idx + 3] = depth.ask_qty_at_tick(ask_tick)
+        #     idx += 4
+
+        # with objmode(mid_price_pred='int32'):
+        # x = get_current_market_depth(hbt, 25, stats, 2)
+
+        mid_price_pred = predict_mid_price(hbt, stats)
+
+        reservation_price_tick = mid_price_tick + mid_price_pred * skew * position
 
         bid_price_tick = np.minimum(np.round(reservation_price_tick - half_spread_tick), best_bid_tick)
         ask_price_tick = np.maximum(np.round(reservation_price_tick + half_spread_tick), best_ask_tick)
