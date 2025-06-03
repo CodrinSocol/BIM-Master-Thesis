@@ -2,28 +2,14 @@ from pathlib import Path
 
 import polars as pl
 
-from src.others.generate_rf_features import create_polars_schema
+from src.processing.helpers.schemas import generate_daily_stats_schema, generate_daily_stats_output_schema
 
-def create_output_schema():
-    schema = {}
-
-    for i in range(0,25):
-        schema[f'asks[{i}].price_mean'] = pl.Float64
-        schema[f'asks[{i}].price_std_dev'] = pl.Float64
-        schema[f'asks[{i}].amount_mean'] = pl.Float64
-        schema[f'asks[{i}].amount_std_dev'] = pl.Float64
-        schema[f'bids[{i}].price_mean'] = pl.Float64
-        schema[f'bids[{i}].price_std_dev'] = pl.Float64
-        schema[f'bids[{i}].amount_mean'] = pl.Float64
-        schema[f'bids[{i}].amount_std_dev'] = pl.Float64
-
-    return pl.Schema(schema)
 
 def generate_daily_stats():
     book_snapshot_dir = "../../data/daily_tardis/book_snapshot_25"
 
-    df_schema = create_polars_schema()
-    out_schema = create_output_schema()
+    df_schema = generate_daily_stats_schema()
+    out_schema = generate_daily_stats_output_schema()
 
     columns = []
 
@@ -64,14 +50,16 @@ def generate_daily_stats():
         out_df.write_csv(f"../../data-generated/depth-stats/daily_stats_25_{i}.csv")
 
 def merge_daily_stats():
-    schema = create_output_schema()
+    schema = generate_daily_stats_output_schema()
 
     out_df = pl.DataFrame(schema=schema)
     for i in range(1, 32):
         daily_df = pl.read_csv(f"../../data-generated/depth-stats/daily_stats_25_{i}.csv", schema=schema)
         out_df = pl.concat([out_df, daily_df], how='vertical')
-    out_df.write_csv("../../data-generated/depth-stats/daily_stats_25_merged.csv")
+    out_df.write_csv("../../data-generated/daily_stats_25_merged.csv")
 
 if __name__ == "__main__":
-    # generate_daily_stats()
+    # First, generate daily stats for each day and persist each one.
+    generate_daily_stats()
+    # Load persisted files, merge them into a single file and persist it.
     merge_daily_stats()
