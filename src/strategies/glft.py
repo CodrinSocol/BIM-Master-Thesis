@@ -1,8 +1,9 @@
 import numpy as np
-from numba import njit
+from numba import njit, objmode
 from hftbacktest import BUY_EVENT, SELL, BUY, GTX, LIMIT
 from numba.typed import Dict
 from numba import uint64
+from time import perf_counter_ns
 
 out_dtype = np.dtype([
     ('half_spread_tick', 'f8'),
@@ -64,8 +65,9 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
     arrival_depth = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
     mid_price_chg = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
 
+    execution_times = np.zeros(n_trading_days * 1_000_000, np.float64)
+
     t = 0 # current step (each step is 100ms)
-    prev_mid_price_tick = np.nan
     mid_price_tick = np.nan
 
     tmp = np.zeros(500, np.float64)
@@ -74,18 +76,16 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
     A = np.nan
     k = np.nan
     volatility = np.nan
-    # gamma = 0.05
-    # delta = 1
-    # adj1 = 1
-    # adj2 = 0.05
+
     order_qty = 1
-    # max_position = 20
     grid_num = 20
 
 
 
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
+        with objmode(start_time='float64'):
+            start_time = perf_counter_ns()
         # if t > 72_000:
         #     return
         # if(t % 36_000 == 0):
@@ -214,10 +214,18 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
         #--------------------------------------------------------
         # Records variables and stats for analysis.
 
-        t += 1
+
 
         if t >= len(arrival_depth) or t >= len(mid_price_chg):
             raise Exception("current tick is out of bounds of allocated arrival_depth or mid_price_chg array size")
 
         # Records the current state for stat calculation.
         recorder.record(hbt)
+
+        with objmode(end_time='float64'):
+            end_time = perf_counter_ns()
+
+        duration = (end_time - start_time) # in ns
+        execution_times[t] = duration / 1_000_000
+        t += 1
+    return execution_times
