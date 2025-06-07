@@ -68,7 +68,7 @@ rf = RandomForestClassifier(
 
 @njit
 def predict_mid_price(hbt,stats):
-    x = build_market_depth(hbt, stats, 2, 25)
+    x = build_market_depth(hbt, stats, 3, 25)
     with objmode(mid_price_pred='int64'):
         # Predicts the mid-price change using the pre-trained random forest model.
         # The model is trained on the features generated from the market depth.
@@ -125,10 +125,6 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
         depth = hbt.depth(asset_no)
         position = hbt.position(asset_no)
         orders = hbt.orders(asset_no)
-
-
-        if t > 72_000:
-            return
 
         best_bid_tick = depth.best_bid_tick
         best_ask_tick = depth.best_ask_tick

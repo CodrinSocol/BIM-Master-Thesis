@@ -16,15 +16,15 @@ def build_market_depth(hbt, stats, start_day, depth_levels):
     last_bid_tick = best_bid_tick
     last_ask_tick = best_ask_tick
     while lvl < depth_levels:
-        prev_ask_price_mean = stats[start_day - 2][lvl * 8]
-        prev_ask_price_std_dev = stats[start_day - 2][lvl * 8 + 1]
-        prev_ask_qty_mean = stats[start_day - 2][lvl * 8 + 2]
-        prev_ask_qty_std_dev = stats[start_day - 2][lvl * 8 + 3]
+        prev_ask_price_mean = stats[start_day - 1][lvl * 8]
+        prev_ask_price_std_dev = stats[start_day - 1][lvl * 8 + 1]
+        prev_ask_qty_mean = stats[start_day - 1][lvl * 8 + 2]
+        prev_ask_qty_std_dev = stats[start_day - 1][lvl * 8 + 3]
 
-        prev_bid_price_mean = stats[start_day - 2][lvl * 8 + 4]
-        prev_bid_price_std_dev = stats[start_day - 2][lvl * 8 + 5]
-        prev_bid_qty_mean = stats[start_day - 2][lvl * 8 + 6]
-        prev_bid_qty_std_dev = stats[start_day - 2][lvl * 8 + 7]
+        prev_bid_price_mean = stats[start_day - 1][lvl * 8 + 4]
+        prev_bid_price_std_dev = stats[start_day - 1][lvl * 8 + 5]
+        prev_bid_qty_mean = stats[start_day - 1][lvl * 8 + 6]
+        prev_bid_qty_std_dev = stats[start_day - 1][lvl * 8 + 7]
 
         for ask_tick in range(last_ask_tick, max(last_bid_tick - 1000, 0), -1):
             qty = depth.ask_qty_at_tick(ask_tick)

@@ -3,7 +3,7 @@ from numba import njit, objmode
 from hftbacktest import BUY_EVENT, SELL, BUY, GTX, LIMIT
 from numba.typed import Dict
 from numba import uint64
-from time import perf_counter_ns
+from time import time
 
 out_dtype = np.dtype([
     ('half_spread_tick', 'f8'),
@@ -85,7 +85,7 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
         with objmode(start_time='float64'):
-            start_time = perf_counter_ns()
+            start_time = time()
         # if t > 72_000:
         #     return
         # if(t % 36_000 == 0):
@@ -223,7 +223,7 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
         recorder.record(hbt)
 
         with objmode(end_time='float64'):
-            end_time = perf_counter_ns()
+            end_time = time()
 
         duration = (end_time - start_time) # in ns
         execution_times[t] = duration / 1_000_000
