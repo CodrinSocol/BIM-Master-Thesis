@@ -225,7 +225,7 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
         with objmode(end_time='float64'):
             end_time = time()
 
-        duration = (end_time - start_time) # in ns
-        execution_times[t] = duration / 1_000_000
+        duration = (end_time - start_time)
+        execution_times[t] = duration
         t += 1
     return execution_times

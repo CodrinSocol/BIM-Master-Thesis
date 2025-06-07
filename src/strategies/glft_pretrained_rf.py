@@ -1,9 +1,12 @@
+from turtledemo.penrose import start
+
 import numpy as np
 from numba import njit, objmode
 from hftbacktest import BUY_EVENT, SELL, BUY, GTX, LIMIT
 from numba.typed import Dict
 from numba import uint64
 from sklearn.ensemble import RandomForestClassifier
+from time import time
 
 from src.processing.helpers.build_tick_market_depth import build_market_depth
 
@@ -67,6 +70,17 @@ rf = RandomForestClassifier(
                 )
 
 @njit
+def retrain_tree(current_day):
+    with objmode():
+        current_day_str = "0"+ str(current_day) if current_day < 10 else str(current_day)
+        train_path = '../data/features/normalized_features/normalized_'+ current_day_str + '_jan.npy'
+        labels_path = '../data/features/directional_labels/k_50_categorical_labels_'+ current_day_str + '_jan.npy'
+        train_features = np.load(train_path)
+        labels = np.load(labels_path)
+        rf.fit(train_features, labels)
+
+
+@njit
 def predict_mid_price(hbt,stats):
     x = build_market_depth(hbt, stats, 3, 25)
     with objmode(mid_price_pred='int64'):
@@ -76,7 +90,14 @@ def predict_mid_price(hbt,stats):
     return mid_price_pred
 
 @njit
-def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position, stats, train_features, labels):
+def get_current_day(current_timestamp):
+    NANO_PER_DAY = 86_400_000_000_000
+    JAN1_2025_NS = 1_735_689_600_000_000_000
+
+    return ((current_timestamp - JAN1_2025_NS) // NANO_PER_DAY) + 1
+
+@njit
+def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position, stats, start_day):
 
     asset_no = 0 # for multiple assets, always 0 if only one asset is used
     # Tick size of this asset: minimum price increase
@@ -85,8 +106,11 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
     arrival_depth = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
     mid_price_chg = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
 
+    execution_times = np.zeros(n_trading_days * 1_000_000, np.float64)
+    tree_train_times = np.zeros(n_trading_days + 4, np.float64)
+
     t = 0 # current step (each step is 100ms)
-    prev_mid_price_tick = np.nan
+
     mid_price_tick = np.nan
 
     tmp = np.zeros(500, np.float64)
@@ -98,11 +122,34 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
     order_qty = 1
     grid_num = 20
 
-    with objmode():
-        rf.fit(train_features, labels)
+    current_day = start_day
+
+    with objmode(start_train='float64'):
+        start_train = time()
+
+    retrain_tree(current_day)
+
+    with objmode(end_train='float64'):
+        end_train = time()
+    tree_train_times[current_day] = end_train - start_train
+
 
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
+        new_current_day = get_current_day(hbt.current_timestamp)
+        if new_current_day > current_day:
+            with objmode(start_train='float64'):
+                start_train = time()
+
+            retrain_tree(new_current_day)
+            current_day = new_current_day
+            with objmode(end_train='float64'):
+                end_train = time()
+            tree_train_times[current_day] = end_train - start_train
+
+        with objmode(start_time='float64'):
+            start_time = time()
+
         if(t % 36_000 == 0):
             print("Hour:", (t % 864_000) // 36_000)
         # Records market order's arrival depth from the mid-price.
@@ -164,21 +211,6 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
 
         half_spread_tick = (c1 + delta / 2 * c2 * volatility) * adj1
         skew = c2 * volatility * adj2
-
-        # snapshot = np.empty(4 * 25, dtype=np.float32)
-        # idx = 0
-        # for lvl in range(25):
-        #     bid_tick = max(best_bid_tick - lvl, 0)
-        #     ask_tick = best_ask_tick + lvl
-        #
-        #     snapshot[idx] = bid_tick
-        #     snapshot[idx + 1] = depth.bid_qty_at_tick(bid_tick)
-        #     snapshot[idx + 2] = ask_tick
-        #     snapshot[idx + 3] = depth.ask_qty_at_tick(ask_tick)
-        #     idx += 4
-
-        # with objmode(mid_price_pred='int32'):
-        # x = get_current_market_depth(hbt, 25, stats, 2)
 
         mid_price_pred = predict_mid_price(hbt, stats)
 
@@ -244,10 +276,19 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
         #--------------------------------------------------------
         # Records variables and stats for analysis.
 
-        t += 1
+
 
         if t >= len(arrival_depth) or t >= len(mid_price_chg):
             raise Exception("current tick is out of bounds of allocated arrival_depth or mid_price_chg array size")
 
         # Records the current state for stat calculation.
         recorder.record(hbt)
+        with objmode(end_time='float64'):
+            end_time = time()
+
+        duration = (end_time - start_time)
+        execution_times[t] = duration
+
+        t += 1
+
+    return execution_times, tree_train_times
