@@ -1,5 +1,3 @@
-from turtledemo.penrose import start
-
 import numpy as np
 from numba import njit, objmode
 from hftbacktest import BUY_EVENT, SELL, BUY, GTX, LIMIT
@@ -61,10 +59,10 @@ def measure_trading_intensity(order_arrival_depth, out):
     return out[:max_tick]
 
 rf = RandomForestClassifier(
-                n_estimators=100,
-                max_depth=10,
-                min_samples_split=2,
-                min_samples_leaf=1,
+                n_estimators=63,
+                max_depth=5,
+                min_samples_split=6,
+                min_samples_leaf=4,
                 max_features='sqrt',
                 random_state=42,
                 )
@@ -83,10 +81,10 @@ def retrain_tree(current_day):
 @njit
 def predict_mid_price(hbt,stats):
     x = build_market_depth(hbt, stats, 3, 25)
-    with objmode(mid_price_pred='int64'):
+    with objmode(mid_price_pred='float64[:]'):
         # Predicts the mid-price change using the pre-trained random forest model.
         # The model is trained on the features generated from the market depth.
-        mid_price_pred = rf.predict([x])[0]
+        mid_price_pred = rf.predict_proba([x])[0]
     return mid_price_pred
 
 @njit
@@ -212,12 +210,26 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
         half_spread_tick = (c1 + delta / 2 * c2 * volatility) * adj1
         skew = c2 * volatility * adj2
 
-        mid_price_pred = predict_mid_price(hbt, stats)
+        mid_price_probas = predict_mid_price(hbt, stats)
 
-        reservation_price_tick = mid_price_tick + mid_price_pred * skew * position
+        reservation_price_tick = mid_price_tick - skew * position
 
-        bid_price_tick = np.minimum(np.round(reservation_price_tick - half_spread_tick), best_bid_tick)
-        ask_price_tick = np.maximum(np.round(reservation_price_tick + half_spread_tick), best_ask_tick)
+        # if max(mid_price_probas) != mid_price_probas[1] and max(mid_price_probas) > 0.5:
+        prob_up = mid_price_probas[2]
+        prob_down = mid_price_probas[0]
+
+        edge = prob_up - prob_down  # −1 … +1
+
+        alpha = 0.7  # tune 0.2–0.7
+
+        half_spread_up = half_spread_tick * (1 - alpha * max(0, edge))
+        half_spread_down = half_spread_tick * (1 - alpha * max(0, -edge))
+
+        bid_price_tick = np.round(reservation_price_tick - half_spread_down)
+        ask_price_tick = np.round(reservation_price_tick + half_spread_up)
+        # else:
+        #     bid_price_tick = np.minimum(np.round(reservation_price_tick - half_spread_tick), best_bid_tick)
+        #     ask_price_tick = np.maximum(np.round(reservation_price_tick + half_spread_tick), best_ask_tick)
 
         bid_price = bid_price_tick * tick_size
         ask_price = ask_price_tick * tick_size
