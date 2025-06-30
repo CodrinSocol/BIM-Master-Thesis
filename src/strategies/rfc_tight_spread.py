@@ -58,29 +58,43 @@ def measure_trading_intensity(order_arrival_depth, out):
         max_tick = max(max_tick, tick)
     return out[:max_tick]
 
+# OLD ANALYSIS (results with the start_day error)
+# rf = RandomForestClassifier(
+#                 n_estimators=63,
+#                 max_depth=5,
+#                 min_samples_split=6,
+#                 min_samples_leaf=4,
+#                 max_features='sqrt',
+#                 random_state=42,
+#                 )
+
 rf = RandomForestClassifier(
-                n_estimators=63,
+                n_estimators=120,
                 max_depth=5,
-                min_samples_split=6,
-                min_samples_leaf=4,
-                max_features='sqrt',
+                min_samples_split=9,
+                min_samples_leaf=2,
+                max_features='log2',
                 random_state=42,
                 )
 
 @njit
 def retrain_tree(current_day):
     with objmode():
-        current_day_str = "0"+ str(current_day) if current_day < 10 else str(current_day)
-        train_path = '../data/features/normalized_features/normalized_'+ current_day_str + '_jan.npy'
-        labels_path = '../data/features/directional_labels/k_50_categorical_labels_'+ current_day_str + '_jan.npy'
+        prev_day = current_day - 1
+        prev_day_str = "0"+ str(prev_day) if prev_day < 10 else str(prev_day)
+
+        train_path = '../../data/features/normalized_features/normalized_'+ prev_day_str + '_jan.npy'
+        labels_path = '../../data/features/directional_labels/k_50_categorical_labels_'+ prev_day_str + '_jan.npy'
+
         train_features = np.load(train_path)
         labels = np.load(labels_path)
         rf.fit(train_features, labels)
 
 
 @njit
-def predict_mid_price(hbt,stats):
-    x = build_market_depth(hbt, stats, 3, 25)
+def predict_mid_price(hbt,stats, current_day):
+    prev_day = 3
+    x = build_market_depth(hbt, stats, prev_day, 25)
     with objmode(mid_price_pred='float64[:]'):
         # Predicts the mid-price change using the pre-trained random forest model.
         # The model is trained on the features generated from the market depth.
@@ -95,7 +109,7 @@ def get_current_day(current_timestamp):
     return ((current_timestamp - JAN1_2025_NS) // NANO_PER_DAY) + 1
 
 @njit
-def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position, stats, start_day):
+def glft_rfc_tight(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, max_position, stats, start_day):
 
     asset_no = 0 # for multiple assets, always 0 if only one asset is used
     # Tick size of this asset: minimum price increase
@@ -129,27 +143,16 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
 
     with objmode(end_train='float64'):
         end_train = time()
-    tree_train_times[current_day] = end_train - start_train
+    tree_train_times[0] = end_train - start_train
 
-
+    print("Finished Tree training")
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
-        new_current_day = get_current_day(hbt.current_timestamp)
-        if new_current_day > current_day:
-            with objmode(start_train='float64'):
-                start_train = time()
-
-            retrain_tree(new_current_day)
-            current_day = new_current_day
-            with objmode(end_train='float64'):
-                end_train = time()
-            tree_train_times[current_day] = end_train - start_train
-
         with objmode(start_time='float64'):
             start_time = time()
 
-        if(t % 36_000 == 0):
-            print("Hour:", (t % 864_000) // 36_000)
+        # if(t % 36_000 == 0):
+        #     print("Hour:", (t % 864_000) // 36_000)
         # Records market order's arrival depth from the mid-price.
         if not np.isnan(mid_price_tick):
             depth = -np.inf
@@ -210,7 +213,7 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
         half_spread_tick = (c1 + delta / 2 * c2 * volatility) * adj1
         skew = c2 * volatility * adj2
 
-        mid_price_probas = predict_mid_price(hbt, stats)
+        mid_price_probas = predict_mid_price(hbt, stats, current_day)
 
         reservation_price_tick = mid_price_tick - skew * position
 
@@ -220,16 +223,14 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
 
         edge = prob_up - prob_down  # −1 … +1
 
-        alpha = 0.7  # tune 0.2–0.7
+        # RF_ADAPTIVE_ALPHA
+        alpha = 1
 
         half_spread_up = half_spread_tick * (1 - alpha * max(0, edge))
         half_spread_down = half_spread_tick * (1 - alpha * max(0, -edge))
 
-        bid_price_tick = np.round(reservation_price_tick - half_spread_down)
+        bid_price_tick =  np.round(reservation_price_tick - half_spread_down)
         ask_price_tick = np.round(reservation_price_tick + half_spread_up)
-        # else:
-        #     bid_price_tick = np.minimum(np.round(reservation_price_tick - half_spread_tick), best_bid_tick)
-        #     ask_price_tick = np.maximum(np.round(reservation_price_tick + half_spread_tick), best_ask_tick)
 
         bid_price = bid_price_tick * tick_size
         ask_price = ask_price_tick * tick_size
@@ -302,5 +303,5 @@ def glft_pre_trained(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2, ma
         execution_times[t] = duration
 
         t += 1
-
+    print(f"Finished Day {current_day}")
     return execution_times, tree_train_times
