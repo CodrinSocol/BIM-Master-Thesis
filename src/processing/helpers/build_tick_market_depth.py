@@ -2,7 +2,18 @@ import numpy as np
 from numba import njit
 
 @njit
-def build_market_depth(hbt, stats, start_day, depth_levels):
+def build_market_depth(hbt, stats, prev_day, depth_levels):
+    """
+    Builds the market depth features for the given day based on the previous day's statistics for normalisation.
+    :param hbt:
+    :param stats:
+    :param prev_day:
+    :param depth_levels:
+    :return:
+    """
+    ### Normalization uses the previous day for mean and std to normalize the data of current day.
+
+
     n_features = depth_levels * 4 # for each depth level, there are 4 variables: bid price and volume and ask price and volume.
 
     current_features = np.empty(n_features, dtype=np.float32)
@@ -16,15 +27,15 @@ def build_market_depth(hbt, stats, start_day, depth_levels):
     last_bid_tick = best_bid_tick
     last_ask_tick = best_ask_tick
     while lvl < depth_levels:
-        prev_ask_price_mean = stats[start_day - 1][lvl * 8]
-        prev_ask_price_std_dev = stats[start_day - 1][lvl * 8 + 1]
-        prev_ask_qty_mean = stats[start_day - 1][lvl * 8 + 2]
-        prev_ask_qty_std_dev = stats[start_day - 1][lvl * 8 + 3]
+        prev_ask_price_mean = stats[prev_day - 1][lvl * 8]
+        prev_ask_price_std_dev = stats[prev_day - 1][lvl * 8 + 1]
+        prev_ask_qty_mean = stats[prev_day - 1][lvl * 8 + 2]
+        prev_ask_qty_std_dev = stats[prev_day - 1][lvl * 8 + 3]
 
-        prev_bid_price_mean = stats[start_day - 1][lvl * 8 + 4]
-        prev_bid_price_std_dev = stats[start_day - 1][lvl * 8 + 5]
-        prev_bid_qty_mean = stats[start_day - 1][lvl * 8 + 6]
-        prev_bid_qty_std_dev = stats[start_day - 1][lvl * 8 + 7]
+        prev_bid_price_mean = stats[prev_day - 1][lvl * 8 + 4]
+        prev_bid_price_std_dev = stats[prev_day - 1][lvl * 8 + 5]
+        prev_bid_qty_mean = stats[prev_day - 1][lvl * 8 + 6]
+        prev_bid_qty_std_dev = stats[prev_day - 1][lvl * 8 + 7]
 
         for ask_tick in range(last_ask_tick, max(last_bid_tick - 1000, 0), -1):
             qty = depth.ask_qty_at_tick(ask_tick)

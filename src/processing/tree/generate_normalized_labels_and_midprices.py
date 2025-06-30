@@ -2,7 +2,6 @@ import pandas as pd
 
 import numpy as np
 from hftbacktest import BacktestAsset, HashMapMarketDepthBacktest
-from hftbacktest import Recorder
 
 from src.processing.tree.backtest_generate_features import build_rf_features
 
@@ -20,7 +19,7 @@ def generate_labels_and_mid_prices():
 
     stats = pd.read_csv("../../../data-generated/daily_stats_25_merged.csv").to_numpy()
 
-    for day in range(1,32):
+    for day in range(1,2):
         print("Current Day:", day)
 
         data_day = f"../../../data/daily_processed/deribit_eth_perp_2025-01-{day:02d}.npz"
@@ -40,11 +39,12 @@ def generate_labels_and_mid_prices():
         hbt = HashMapMarketDepthBacktest([asset])
 
 
-        features, mid_prices, t = build_rf_features(hbt, day, stats)
+        features, mid_prices,mid_prices_norm, t = build_rf_features(hbt, day, stats)
         hbt.close()
 
         np.save(f"../../../data/features/normalized_features/normalized_{day:02d}_jan.npy", features)
         np.save(f"../../../data/features/mid_prices/mid_prices_{day:02d}_jan.npy", mid_prices)
+        np.save(f"../../../data/features/mid_prices_normalized/mid_prices_norm_{day:02d}_jan.npy", mid_prices_norm)
 
 if __name__ == "__main__":
     generate_labels_and_mid_prices()

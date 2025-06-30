@@ -3,7 +3,7 @@ from numba import njit, objmode
 from hftbacktest import BUY_EVENT, SELL, BUY, GTX, LIMIT
 from numba.typed import Dict
 from numba import uint64
-from time import time
+from time import perf_counter_ns
 
 out_dtype = np.dtype([
     ('half_spread_tick', 'f8'),
@@ -37,19 +37,9 @@ def measure_trading_intensity(order_arrival_depth, out):
     for depth in order_arrival_depth:
         if not np.isfinite(depth):
             continue
-
-        # Sets the tick index to 0 for the nearest possible best price
-        # as the order arrival depth in ticks is measured from the mid-price
         tick = round(depth / .5) - 1
-
-        # In a fast-moving market, buy trades can occur below the mid-price (and vice versa for sell trades)
-        # since the mid-price is measured in a previous time-step;
-        # however, to simplify the problem, we will exclude those cases.
         if tick < 0 or tick >= len(out):
             continue
-
-        # All of our possible quotes within the order arrival depth,
-        # excluding those at the same price, are considered executed.
         out[:tick] += 1
 
         max_tick = max(max_tick, tick)
@@ -65,7 +55,7 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
     arrival_depth = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
     mid_price_chg = np.full(n_trading_days * 1_000_000, np.nan, np.float64)
 
-    execution_times = np.zeros(n_trading_days * 1_000_000, np.float64)
+    execution_times = np.zeros(n_trading_days * 1_000_000, np.int64)
 
     t = 0 # current step (each step is 100ms)
     mid_price_tick = np.nan
@@ -84,14 +74,9 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
 
     # Checks every 100 milliseconds.
     while hbt.elapse(100_000_000) == 0:
-        with objmode(start_time='float64'):
-            start_time = time()
-        # if t > 72_000:
-        #     return
-        # if(t % 36_000 == 0):
-        #     print("Hour:", (t % 864_000) // 36_000)
-        if t % 864_000 == 0:
-            print("Trading day: ", t // 864_000)
+        with objmode(start_time='int64'):
+            start_time = perf_counter_ns()
+
         #--------------------------------------------------------
         # Records market order's arrival depth from the mid-price.
         if not np.isnan(mid_price_tick):
@@ -154,8 +139,8 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
 
         reservation_price_tick = mid_price_tick - skew * position
 
-        bid_price_tick = np.minimum(np.round(reservation_price_tick - half_spread_tick), best_bid_tick)
-        ask_price_tick = np.maximum(np.round(reservation_price_tick + half_spread_tick), best_ask_tick)
+        bid_price_tick = np.round(reservation_price_tick - half_spread_tick)
+        ask_price_tick = np.round(reservation_price_tick + half_spread_tick)
 
         bid_price = bid_price_tick * tick_size
         ask_price = ask_price_tick * tick_size
@@ -222,8 +207,8 @@ def gridtrading_glft_mm(hbt, recorder, n_trading_days, gamma, delta, adj1, adj2,
         # Records the current state for stat calculation.
         recorder.record(hbt)
 
-        with objmode(end_time='float64'):
-            end_time = time()
+        with objmode(end_time='int64'):
+            end_time = perf_counter_ns()
 
         duration = (end_time - start_time)
         execution_times[t] = duration

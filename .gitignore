@@ -6,4 +6,4 @@ data
 # Jupyter Notebook checkpoints
 src/.ipynb_checkpoints
 
-results
+results/execution_times

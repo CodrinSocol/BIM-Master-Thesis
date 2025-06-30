@@ -20,7 +20,7 @@ def generate_daily_stats():
         columns.append(f'bids[{i}].amount')
 
 
-    for i in range(20,32):
+    for i in range(1,32):
         print(f"Processing day {i:02d}...")
         df = pl.read_csv(Path(f"{book_snapshot_dir}/deribit_book_snapshot_25_2025-01-{i:02d}_ETH-PERPETUAL.csv.gz"), columns=columns, schema=df_schema, ignore_errors=True, encoding='utf8-lossy')
         new_row = {}
@@ -59,7 +59,5 @@ def merge_daily_stats():
     out_df.write_csv("../../data-generated/daily_stats_25_merged.csv")
 
 if __name__ == "__main__":
-    # First, generate daily stats for each day and persist each one.
     generate_daily_stats()
-    # Load persisted files, merge them into a single file and persist it.
     merge_daily_stats()
